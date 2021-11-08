@@ -1,0 +1,709 @@
+---
+title: "Machine Learning Project"
+---
+
+
+**Your Name**: Alec Gray Jr
+**Your G Number**: G00758578
+
+
+
+```{r warning = FALSE, message = FALSE}
+# Suppress dplyr summarise grouping warning messages
+options(dplyr.summarise.inform = FALSE)
+
+library(tidyverse)
+library(tidymodels)
+library(parsnip)
+library(vip)
+library(rpart.plot)
+library("ranger")
+library('kknn')
+
+credit_card_df <- readRDS(url('https://gmubusinessanalytics.netlify.app/data/credit_card_df.rds'))
+
+```
+
+
+
+# Data Analysis
+
+In this section, you must think of at least 5 relevant questions that explore the relationship between `customer_status` and the other variables in the `credit_card_df` data set. The goal of your analysis should be discovering which variables drive the differences between customers who do and do not close their account.
+
+You must answer each question and provide supporting data summaries with either a summary data frame (using `dplyr`/`tidyr`) or a plot (using `ggplot`) or both.
+
+In total, you must have a minimum of 3 plots (created with `ggplot`) and 3 summary data frames (created with `dplyr`) for the exploratory data analysis section. Among the plots you produce, you must have at least 3 different types (ex. box plot, bar chart, histogram, scatter plot, etc...)
+
+See the [Data Analysis Project](https://gmubusinessanalytics.netlify.app/data-analysis-project.html){target="_blank"} for an example of a question answered with a summary table and plot.
+
+**Note**: To add an R code chunk to any section of your project, you can use the keyboard shortcut `Ctrl` + `Alt` + `i` or the `insert` button at the top of your R project template notebook file.
+
+
+
+# Question 1
+
+
+**Question**:
+-   How does employment status impact whether or not a customer
+    has closed his/her account?
+
+**Answer**:
+-   There are more full time individuals (2390) than any other employment type
+    in the dataset, however part_time individuals have the most closed accounts
+    overall (1014). Part time is the only employment status where the number of 
+    closed accounts (1014) exceeds the number of active accounts (513).
+
+```{r}
+employment_status <- credit_card_df %>% 
+  group_by(employment_status, customer_status) %>% 
+  summarize(Total = n())
+  
+
+employment_status_plot <- ggplot(employment_status,aes(x=customer_status, y=Total, fill=customer_status))+ 
+  geom_col()+
+  facet_wrap(~employment_status)+
+  labs(x="Customer Status", y="Total", title="Number of Active and Closed Accounts based on Employment Status")
+
+employment_status
+employment_status_plot
+
+```
+
+
+
+# Question 2
+
+
+**Question**:
+-   Does marital status impact credit limits, and do lower credit limits
+    lead to higher numbers of closed accounts  
+
+**Answer**:
+-   Th distributions for credit limit are very similar across each marital status.
+    Thus marital status has no significant impact on a person's credit limit.
+    However,  across the three marital statuses, for people who have the lowest
+    credit limit (1430), married individuals account for the highest amount of
+    closed accounts (95).
+
+```{r}
+marital_status <- credit_card_df %>% 
+  group_by(marital_status)
+  #summarize(min(credit_limit))
+
+# min(credit_card_df$credit_limit)
+# max(credit_card_df$credit_limit)
+
+low_credit_limit <- credit_card_df %>% 
+  filter(credit_limit == min(credit_limit)) %>% 
+  group_by(marital_status, customer_status) %>% 
+  summarize(total = n()) %>% 
+  arrange(desc(marital_status), desc(total))
+
+marital_status_plot <- ggplot(marital_status, aes(x=credit_limit, fill = marital_status))+
+  geom_histogram()+
+  #expand_limits(x = c(0,5000,10000,15000,20000,25000,30000))+
+  facet_wrap(~marital_status)
+
+# turning off scientific notation
+options(scipen = 999)
+low_credit_limit_plot <- ggplot(low_credit_limit, aes(x=customer_status, y= total, fill = marital_status))+
+  geom_col()+
+  facet_wrap(~marital_status)
+
+marital_status_count <- credit_card_df %>% 
+  group_by(marital_status) %>% 
+  summarize(total = n()) %>% 
+  arrange(desc(total))
+
+marital_status_count_plot <- ggplot(credit_card_df, aes(x=marital_status, fill=marital_status))+
+  geom_bar()+
+  labs(x="Marital Status", y="Total", title="Number of Customers by Marital Status")
+
+marital_status_count
+marital_status_count_plot
+low_credit_limit
+marital_status_plot
+low_credit_limit_plot
+
+```
+
+
+# Question 3
+
+
+**Question**:
+-   How does account activity in the previous year affect customer status?
+
+
+**Answer**:
+-   0 months inactive amounts for the minimum number of accounts in the dataset.
+    Only 25 accounts were active for 12 consecutive months last year. However,
+    84% (21/25) of these customers closed their accounts. The number of closed
+    accounts increases with the number of months inactive until 3 months inactive
+    when it peaks at 1059 closed accounts. The number of closed accounts remains 
+    higher than active accounts for 4 and 5 inactive months with 6 inactive months
+    having slightly higher active than closed accounts (closed: 36, active: 32).
+    The number of accounts in total drop off significantly after 3 months, since
+    most accounts have already been accounted for for 0-3 months inactive.
+
+```{r}
+#max(credit_card_df$months_inactive_last_year)
+
+months_inactive <- credit_card_df %>% 
+  group_by(months_inactive_last_year, customer_status) %>% 
+  summarize(total = n())
+
+months_inactive
+ggplot(months_inactive, aes(x=customer_status, y= total, fill = customer_status))+
+  geom_col()+
+  facet_wrap(~months_inactive_last_year)+
+  labs(x="Customer Status", y="Total", title="Number of Closed and Active Accounts based on Months Inactive")
+
+```
+
+
+
+# Question 4
+
+
+**Question**:
+-   How does education and income affect customer status? Are people more likely
+    to cancel if contacted too many times in one year? Is there any correlation
+    between transactions and total amount spent last year?
+
+**Answer**:
+-   The distributions of income are pretty similar between the three education
+    levels. Not one stands out more than any of the others. 
+
+-   There is no real correlation between the amount of times a customer was contacted last year
+    and customer_status. 
+
+-   As transactions increase, total spent last year increases. 
+    And all accounts for customers that spent the most last year remained active.
+    
+```{r}
+education <- credit_card_df %>% 
+  group_by(education)
+  #summarize_at(vars(income), funs(min,median,max))
+
+education_income_plot <- ggplot(education, aes(x=education, y=income))+
+  geom_boxplot()
+
+# contacted last year
+contacted_last_year <- credit_card_df %>% 
+  #filter(customer_status == 'closed_account') %>% 
+  group_by(contacted_last_year, customer_status) %>% 
+  summarize(total = n()) %>% 
+  arrange(desc(total))
+
+# credit_card_df %>% 
+# group_by((customer_status)) %>% 
+# summarize(total =n())
+
+contacted_last_year_plot <- ggplot(contacted_last_year, aes(x=contacted_last_year, y=total, fill=customer_status))+
+  geom_col()+
+  facet_wrap(~customer_status)
+
+
+transactions_totalspent_plot <- ggplot(credit_card_df, aes(transactions_last_year, y=total_spend_last_year, color=customer_status))+
+  geom_point()
+
+# Finds the customer(s) who made the most amount of transactions but still closed the account.
+highest_closed <- credit_card_df %>% 
+  filter(customer_status == 'closed_account') %>% 
+  summarize(highest_transactions_on_closed_account = max(transactions_last_year))
+
+highest_closed
+education_income_plot
+contacted_last_year
+contacted_last_year_plot
+transactions_totalspent_plot
+
+```
+
+
+
+# Question 5
+
+
+**Question**:
+-   Are there certain cards being canceled more than others?
+
+**Answer**:
+
+-   No correlation exists between income and credit card type; the distributions
+    are quite similar. Blue card holders comprise 55% of the data. Blue cardholders
+    have 902 more closed accounts (1497) than silver and gold combined (296 + 299 = 595).
+    
+```{r}
+
+#levels(credit_card_df$card_type)
+
+
+card_type <- credit_card_df %>% 
+  group_by(card_type, income)
+
+cards_total <- credit_card_df %>% 
+  group_by(card_type) %>% 
+  summarize(total = n())
+
+cards_customer_status <- credit_card_df %>% 
+  group_by(card_type, customer_status) %>% 
+  summarize(total = n())
+
+cards_total_plot <- ggplot(cards_total, aes(x=card_type, y=total, fill=card_type))+
+  geom_col()+
+  scale_fill_manual(values=c("blue","gray","gold"))+
+  labs(x="Credit Card", y="Total", 
+       title="Number of Credit Cards per Type")
+
+card_type_plot <- ggplot(card_type, aes(x=income, fill= card_type))+
+  geom_histogram(bins = 30)+
+  scale_fill_manual(values=c("blue","gray","gold"))+
+  facet_wrap(~card_type)+
+  labs(x="Income", y="Number of Customers", 
+       title="Customers' Income based on Credit Card Held")
+
+# blue cards are being closed out more than any other card
+
+cards_customer_status_plot <- ggplot(credit_card_df %>% 
+  group_by(card_type), 
+  aes(x=card_type, fill= card_type))+
+  geom_bar()+
+  scale_fill_manual(values=c("blue","gray","gold"))+
+  facet_wrap(~customer_status)+
+  labs(x="Credit Card Type", y="Number of Accounts", 
+       title="Number of Closed and Active Accounts based on Card Type")
+
+cards_total
+cards_total_plot
+cards_customer_status
+cards_customer_status_plot
+card_type_plot
+
+credit_card_df %>% 
+  group_by(card_type) %>% 
+  summarize_at(vars(income), funs(min,median,mean,max))
+```
+
+
+
+
+# Machine Learning
+
+
+In this section of the project, you will fit **three classification algorithms** to predict the outcome variable,`customer_status`.
+
+You must follow the machine learning steps below. 
+
+The data splitting and feature engineering steps should only be done once so that your models are using the same data and feature engineering steps for training.
+
+- Split the `credit_card_df` data into a training and test set (remember to set your seed)
+- Specify a feature engineering pipeline with the `recipes` package
+    - You can include steps such as skewness transformation, correlation filters, dummy variable encoding or any other steps you find appropriate
+- Specify a `parsnip` model object
+    - You may choose from the following classification algorithms:
+      - Logistic Regression
+      - LDA
+      - QDA
+      - KNN
+      - Decision Tree
+      - Random Forest
+- Package your recipe and model into a workflow
+- Fit your workflow to the training data
+    - If your model has hyperparameters:
+      - Split the training data into 5 folds for 5-fold cross validation using `vfold_cv` (remember to set your seed)
+      - Perform hyperparamter tuning with a random grid search using the `grid_random()` function
+      - Refer to the following tutorial for an example - [Random Grid Search](https://gmubusinessanalytics.netlify.app/lesson-08-r-tutorial.html#Hyperparameter_Tuning14){target="_blank"}
+      - Hyperparameter tuning can take a significant amount of computing time. Be careful not to set the `size` argument of `grid_random()` too large. I recommend `size` = 10 or smaller.
+      - Select the best model with `select_best()` and finalize your workflow
+- Evaluate model performance on the test set by plotting an ROC curve using `autoplot()` and calculating the area under the ROC curve on your test data
+
+
+```{r}
+# Creating new data set that copies data from credit_card_df but changes 
+# the levels of customer_status (closed_account = 1 and active_account = 2)
+
+new_credit_card_df <- credit_card_df
+
+levels(new_credit_card_df$customer_status)[1] <- "Yes"
+levels(new_credit_card_df$customer_status)[2] <- "No"
+levels(new_credit_card_df$customer_status)
+
+```
+
+## Data Splitting
+```{r}
+set.seed(777)
+
+credit_card_split <- initial_split(new_credit_card_df, prop = 0.75, 
+                             strata = customer_status)
+
+credit_card_training <- credit_card_split %>% 
+                          training()
+
+credit_card_test <- credit_card_split %>%
+                      testing()
+
+# Create folds for cross validation on the training data set
+## These will be used to tune model hyperparameters
+set.seed(777)
+
+credit_card_folds <- vfold_cv(credit_card_training, v = 5)
+```
+
+## Feature Engineering
+```{r}
+
+# correlation matrix to determine correlated values
+correlated_values <- new_credit_card_df %>% 
+  select_if(is.numeric) %>% 
+  cor()
+
+credit_card_training
+
+#removing any skewness with step_YeoJohnson
+#normalizing all numeric data  with step_normalize to account for any data 
+#that may be on differet scales 
+#removing any highly correlated values with step_corr
+#creating dummy variables (0,1) for all nonimal variables. 
+
+credit_card_recipe <- recipe(customer_status ~ ., data = credit_card_training) %>% 
+                       step_corr(all_numeric(), threshold = 0.7) %>% 
+                       step_YeoJohnson(all_numeric(), -all_outcomes()) %>% 
+                       step_normalize(all_numeric(), -all_outcomes()) %>% 
+                       step_dummy(all_nominal(), -all_outcomes())
+
+#viwing recipe to make sure everything looks good
+credit_card_recipe %>%
+  prep(training = credit_card_training) %>% 
+  bake(new_data = NULL)
+
+```
+
+
+# Model 1
+- Random Forest
+
+```{r}
+#model creation
+cc_rf_model <- rand_forest(mtry = tune(),
+            trees = tune(),
+            min_n = tune()) %>% 
+            set_engine('ranger', importance = 'impurity') %>% 
+            set_mode('classification')
+```
+
+
+```{r}
+# creating the workflow
+cc_rf_workflow <- workflow() %>% 
+               add_model(cc_rf_model) %>% 
+               add_recipe(credit_card_recipe)
+```
+
+
+```{r}
+# creating custom metrics to measure model performance
+my_custom_metrics <- metric_set(f_meas, sens, spec, roc_auc)
+
+```
+
+```{r}
+# creating random grid of hyperperamater values to test and tuning those parameters
+# on the workflow
+set.seed(777)
+cc_rf_grid <- grid_random(mtry() %>% range_set(c(7,10)),
+                       trees(),
+                       min_n(),
+                       size = 10)
+
+#tuning the workflow to find the best the optimal combinations of hyperparameters
+set.seed(777)
+cc_rf_tuning <- cc_rf_workflow %>% 
+              tune_grid(resamples = credit_card_folds,
+              grid = cc_rf_grid)
+
+cc_rf_tuning %>% 
+ show_best('roc_auc')
+
+#selecting the best model with highest roc_auc value
+cc_best_rf <- cc_rf_tuning %>% 
+                select_best(metric = 'roc_auc')
+cc_best_rf
+```
+
+```{r}
+# finalizing the workflow using the best tuned model
+final_cc_rf_workflow <- cc_rf_workflow %>% 
+  finalize_workflow(cc_best_rf)
+
+#fitting the model on the training data to visualize performance of model
+cc_rf_workflow_fit <- final_cc_rf_workflow %>% 
+  fit(data = credit_card_training)
+
+cc_rf_fit_model <- cc_rf_workflow_fit %>% 
+                    pull_workflow_fit()
+
+cc_rf_fit_model
+```
+
+
+```{r}
+#variable of importance shows that transactions_last_year is the most impactful 
+#to the outcome variable
+vip <- vip(cc_rf_fit_model)
+
+#last_fit() will now use the best model fit the entire training dataset and then
+#test on the test dataset
+cc_rf_last_fit <- final_cc_rf_workflow %>% 
+               last_fit(credit_card_split,
+                        metrics = my_custom_metrics)
+
+#finding accuracy and roc_auc values for test data
+cc_metrics <- cc_rf_last_fit %>% collect_metrics()
+
+#collecting predictions and then creating roc_curve to visualize performance
+roc_curve_plot <- cc_rf_last_fit %>% collect_predictions() %>% 
+                roc_curve(truth  = customer_status, estimate = .pred_Yes) %>% 
+                autoplot()
+
+cc_predictions <- cc_rf_last_fit %>% collect_predictions()
+confusion_matrix <- conf_mat(cc_predictions, truth = customer_status, estimate = .pred_class)
+
+vip
+cc_metrics
+roc_curve_plot
+cc_predictions
+confusion_matrix
+
+```
+
+
+
+
+
+# Model 2
+- Logistic Regression
+
+```{r}
+# model creation
+cc_logistic_model <- logistic_reg() %>% 
+            set_engine('glm') %>% 
+            set_mode('classification')
+```
+
+
+```{r}
+# workflow creation
+cc_log_workflow <- workflow() %>% 
+                   add_model(cc_logistic_model) %>% 
+                   add_recipe(credit_card_recipe)
+
+```
+
+
+
+```{r}
+# fitting the logistic model on the workflow
+cc_lastfit_reg <-  cc_log_workflow %>% 
+                   last_fit(split = credit_card_split,
+                            metrics = my_custom_metrics)
+
+```
+
+
+```{r}
+# collect metrics
+lastfit_reg_metrics <- cc_lastfit_reg %>% 
+                        collect_metrics()
+
+lastfit_reg_metrics                               
+
+#collect predictions
+lastfit_reg_predictions <- cc_lastfit_reg %>% 
+                            collect_predictions()
+
+lastfit_reg_predictions
+```
+
+```{r}
+# roc curve on predictions
+reg_roc_curve <- lastfit_reg_predictions %>% 
+  roc_curve(truth = customer_status, estimate = .pred_Yes) %>% 
+  autoplot()
+  
+logistic_confusion_matrix<- conf_mat(lastfit_reg_predictions, truth = customer_status, estimate = .pred_class)
+
+reg_roc_curve
+logistic_confusion_matrix
+
+# the model incorrectly predicts that 93 would not close out their account,
+# but they did (FN)
+```
+
+# Model 3
+-   KNN
+```{r}
+# Model creation
+cc_knn_model <- nearest_neighbor(neighbors = tune()) %>% 
+             set_engine('kknn') %>% 
+             set_mode('classification')
+
+
+```
+
+
+```{r}
+# Workflow creation
+cc_knn_workflow <- workflow() %>% 
+                add_model(cc_knn_model) %>% 
+                add_recipe(credit_card_recipe)
+
+```
+
+
+```{r}
+# Grid creation for hyperperameter tuning
+cc_knn_grid <- tibble(neighbors = c(10,30,50,70,90,100,150))
+
+```
+
+```{r}
+# Tuning workflow
+set.seed(777)
+
+cc_kn_tuning <- cc_knn_workflow %>% 
+                tune_grid(resamples = credit_card_folds,
+                          grid = cc_knn_grid)
+
+```
+
+
+```{r}
+# Finding best model and finalizing workflow with best model
+
+cc_kn_tuning %>% 
+  show_best('roc_auc')
+
+best_knn_model <- cc_kn_tuning %>% 
+                  select_best('roc_auc')
+
+final_knn_model <- cc_knn_workflow %>% 
+                   finalize_workflow(best_knn_model)
+```
+
+
+```{r}
+# Finding best fit for best model by passing best model to last_fit()
+cc_knn_last_fit <- final_knn_model %>% 
+                    last_fit(split = credit_card_split,
+                             metrics = my_custom_metrics)
+
+
+```
+
+```{r}
+# Collecting metrics and predictions
+knn_metrics <- cc_knn_last_fit %>% collect_metrics()
+
+knn_predictions <- cc_knn_last_fit %>% collect_predictions()
+
+# Model produced a roc_auc of 92.69, an A-, which is slightly better than the logistic
+# regression model (91.96)
+knn_metrics
+knn_predictions
+knn_roc_curve <- knn_predictions %>% 
+                 roc_curve(truth = customer_status, estimate = .pred_Yes) %>% 
+                 autoplot()
+
+knn_conf_mat <- conf_mat(knn_predictions, truth = customer_status, estimate = .pred_class)
+knn_roc_curve
+knn_conf_mat
+
+# 100 False Negatives but 14 fewer False Positives than the logistic model (86) 
+```
+# Summary of Results
+
+Write a summary of your overall findings and recommendations to the executives at the bank. Think of this section as your closing remarks of a presentation, where you summarize your key findings, model performance, and make recommendations to improve customer retention and service at the bank.
+
+Your executive summary must be written in a [professional tone](https://www.universalclass.com/articles/writing/business-writing/appropriate-tone-in-business-communications.htm){target="_blank"}, with minimal grammatical errors, and should include the following sections:
+
+1. An introduction where you explain the business problem and goals of your data analysis
+
+    - What problem(s) is this company trying to solve? Why are they important to their future success?
+  
+    - What was the goal of your analysis? What questions were you trying to answer and why do they matter?
+
+<br>
+
+2. Highlights and key findings from your Exploratory Data Analysis section 
+    - What were the interesting findings from your analysis and **why are they important for the business**?
+
+    - This section is meant to **establish the need for your recommendations** in the following section
+
+<br>
+
+3. Your “best” classification model and an analysis of its performance 
+    - In this section you should talk about the expected error of your model on future data
+      - To estimate future performance, you can use your model performance results on the **test data**
+    - You should discuss at least one performance metric, such as an F1, sensitivity, specificity, or ROC AUC for your model. However, you must explain the results in an **intuitive, non-technical manner**. Your audience in this case are executives at a bank with limited knowledge of machine learning.
+
+<br>
+
+4. Your recommendations to the bank on how to reduce the number of customers closing their credit card accounts 
+  
+    - Each recommendation must be supported by your data analysis results 
+
+    - You must clearly explain why you are making each recommendation and which results from your data analysis support this recommendation
+
+    - You must also describe the potential business impact of your recommendation:
+      
+      - Why is this a good recommendation? 
+      
+      - What benefits will the business achieve?
+
+
+**Summary**
+
+Introduction
+The following executive summary has been curated by an exploratory data analysis machine learning modeling in response to an inquiry by United Federal Credit Union (United FCU), a credit financing company. United FCU is seeking to gain insight into how their business is performing and how they can maintain active accounts among their customer-base. This executive summary will provide an in-depth analysis on variables that impact whether a customer retains or terminates his credit card account. The summary will also provide fitted machine learning models, which will help predict outcomes on future data.
+
+Highlights and Key Findings
+1.	There are more full-time individuals (2390) than any other employment type In the dataset, however parttime individuals have the most closed accounts overall (1014). Part time is the only employment status where the number of closed accounts (1014) exceeds the number of active accounts (513).
+
+2.	The distributions for credit limit are very similar across each marital status; thus marital status has no significant impact on a person's credit limit. However, across the three marital statuses, for people who have the lowest credit limit (1430), married individuals account for the highest amount of closed accounts (95).
+
+3.	0 months inactive amounts for the minimum number of accounts in the dataset. Only 25 accounts were active for 12 consecutive months last year. However, 84% (21/25) of these customers closed their accounts. 
+
+The number of closed accounts increases with the number of months inactive until 3 months inactive when it peaks at 1059 closed accounts. The number of closed accounts remains higher than active accounts for 4 and 5 inactive months with 6 inactive months having slightly higher active than closed accounts (closed: 36, active: 32). 
+
+The number of accounts in total drop off significantly after 3 months, since most accounts have already been accounted for 0-3 months inactive.
+
+4.	The distributions of income are similar between the three education levels. Not one stands out more than any of the others. 
+
+There is no real correlation between the number of times a customer was contacted last year and customer_status. 
+
+As transactions increase, total spent last year increases. And all accounts for customers that spent the most (>=$12,500) last year remained active.
+
+5.	No correlation exists between income and credit card type; the distributions are quite similar. Blue card holders comprise 55% of the data. Blue cardholders have 902 more closed accounts (1497) than silver and gold combined (296 + 299 = 595).
+Best Classification Model and Model Performance
+The random forest model significantly outperformed the logistic regression and KNN models. Fitted on the training data and evaluated on the test data, the random forest model produced a roc_auc value of 97.35%. This indicates that the random forest model correctly predicts outcomes (and avoids incorrect ones) at a very high rate. 
+
+Using the confusion matrix, and the sensitivity metric value, it is evident that the model correctly predicts 90% of the time that a customer will close his account. Even higher is the specificity metric, which indicates the model correctly predicts 91.96% of the time customers who keep their accounts active. 
+
+The costliest error comes when incorrectly predicting that an individual will remain active when he in fact closes his account; this is known as a false negative. For this error, the model only made 49 incorrect predictions (lowest among the three models), which is an acceptable number given the size of the dataset and given the rates of correct predictions are so high. This error is costliest since the company is expecting money that they will ultimately lose. Retaining customers is very challenging so keeping this number low is key.
+
+Given the variable importance graph, transactions_last_year is of utmost importance and yields the highest impact on the response variable, customer_status. Additionally, from the transactions vs total spent analysis and scatterplot in the previous section, all customers with 95+ transactions last year kept their accounts active. Combining these two facts, it is clear that customers with a high number of transactions last year (95+) are extremely valuable and important for future predictions. These customers will keep their accounts active in the future.
+
+Recommendations
+-	Provide discount programs and cash back incentives for customers who work part-time. Part-time customers (1014) are closing accounts faster than the other two employment types combined (513). Customer retention is key.
+
+-	Extend grace periods on installment payments for married customers with low credit limits. Again, the key is customer retention. Married people (2266) account for the most people in the dataset. Married individuals account for the highest amount of closed accounts (95) across the population with the minimum credit limit (1430). Married people are also the only people who has more closed accounts than active accounts for 1430 credit limits.
+
+-	Increase email ad campaigns for customers who haven’t been active on their credit card in 0-3 months to encourage them to spend money. There are 380 more closed accounts than there are active for inactive months 0-3. Reduce the number of closed accounts by reducing the frequency of customers who are inactive for 0-3 months.
+
+-	Encourage spending and create transaction incentive programs. Set an incentive for customers who reach 95 transactions in a year and an incentive for customers who reach $1,250 credit card transactions within the first year. According to the analysis and machine learning modeling, people who spend more remain active. 
+
+
+
